@@ -112,18 +112,17 @@ impl ChunkVecBuffer {
     }
 
     /// Read data out of this object, passing it `wr`
-    pub fn write_to(&mut self, wr: &mut dyn io::Write) -> io::Result<usize> {
+    pub(crate) fn write_to(&mut self, wr: &mut dyn io::Write) -> io::Result<usize> {
         if self.is_empty() {
             return Ok(0);
         }
 
-        let used = wr.write_vectored(
-            &self
-                .chunks
-                .iter()
-                .map(|ch| io::IoSlice::new(ch))
-                .collect::<Vec<io::IoSlice>>(),
-        )?;
+        let mut bufs = [io::IoSlice::new(&[]); 64];
+        for (iov, chunk) in bufs.iter_mut().zip(self.chunks.iter()) {
+            *iov = io::IoSlice::new(chunk);
+        }
+        let len = cmp::min(bufs.len(), self.chunks.len());
+        let used = wr.write_vectored(&bufs[..len])?;
         self.consume(used);
         Ok(used)
     }
